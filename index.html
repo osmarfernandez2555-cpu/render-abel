@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vectorizador — Raster a SVG</title>
 <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.4.0/dist/svg2pdf.umd.min.js"></script>
 <style>
   :root{
     --bg: #0d1210;
@@ -296,7 +298,7 @@
       </div>
 
       <div class="actions">
-        <button id="downloadSvg" disabled>Descargar .SVG</button>
+        <button id="downloadPdf" disabled>Descargar .PDF</button>
         <button id="downloadPng" disabled>Descargar .PNG (vista)</button>
       </div>
     </div>
@@ -314,7 +316,7 @@ const origBody = document.getElementById('origBody');
 const svgBody = document.getElementById('svgBody');
 const origDims = document.getElementById('origDims');
 const svgDims = document.getElementById('svgDims');
-const downloadSvgBtn = document.getElementById('downloadSvg');
+const downloadPdfBtn = document.getElementById('downloadPdf');
 const downloadPngBtn = document.getElementById('downloadPng');
 
 const colorsInput = document.getElementById('colors');
@@ -385,7 +387,7 @@ function handleFile(file){
       statusEl.textContent = 'Imagen cargada. Lista para convertir.';
       svgBody.innerHTML = '<div class="empty">SIN RESULTADO</div>';
       svgDims.textContent = '';
-      downloadSvgBtn.disabled = true;
+      downloadPdfBtn.disabled = true;
       downloadPngBtn.disabled = true;
       currentSVGString = null;
     };
@@ -437,9 +439,9 @@ convertBtn.addEventListener('click', () => {
         svgEl.style.maxHeight = '300px';
       }
       svgDims.textContent = canvas.width + '×' + canvas.height;
-      downloadSvgBtn.disabled = false;
+      downloadPdfBtn.disabled = false;
       downloadPngBtn.disabled = false;
-      statusEl.textContent = 'Listo. SVG generado (' + (svgstr.length/1024).toFixed(1) + ' KB).';
+      statusEl.textContent = 'Listo. Vector generado — descargalo como PDF.';
     } catch(err){
       statusEl.textContent = 'Error al vectorizar: ' + err.message;
       console.error(err);
@@ -448,15 +450,48 @@ convertBtn.addEventListener('click', () => {
   }, 50);
 });
 
-downloadSvgBtn.addEventListener('click', () => {
-  if(!currentSVGString) return;
-  const blob = new Blob([currentSVGString], {type:'image/svg+xml'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'vectorizado.svg';
-  a.click();
-  URL.revokeObjectURL(url);
+downloadPdfBtn.addEventListener('click', () => {
+  const svgEl = svgBody.querySelector('svg');
+  if(!svgEl || !currentImage) return;
+
+  downloadPdfBtn.disabled = true;
+  const prevLabel = downloadPdfBtn.textContent;
+  downloadPdfBtn.textContent = 'Generando…';
+
+  const w = currentImage.width;
+  const h = currentImage.height;
+
+  // Aseguramos que el SVG tenga dimensiones/viewBox explícitas antes de convertir
+  const cloned = svgEl.cloneNode(true);
+  cloned.setAttribute('width', w);
+  cloned.setAttribute('height', h);
+  if(!cloned.getAttribute('viewBox')){
+    cloned.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  }
+  document.body.appendChild(cloned);
+  cloned.style.position = 'absolute';
+  cloned.style.left = '-99999px';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({
+    orientation: w > h ? 'landscape' : 'portrait',
+    unit: 'pt',
+    format: [w, h]
+  });
+
+  doc.svg(cloned, { x: 0, y: 0, width: w, height: h })
+    .then(() => {
+      doc.save('vectorizado.pdf');
+    })
+    .catch(err => {
+      statusEl.textContent = 'Error al generar PDF: ' + err.message;
+      console.error(err);
+    })
+    .finally(() => {
+      document.body.removeChild(cloned);
+      downloadPdfBtn.disabled = false;
+      downloadPdfBtn.textContent = prevLabel;
+    });
 });
 
 downloadPngBtn.addEventListener('click', () => {
